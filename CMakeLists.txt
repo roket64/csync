@@ -10,13 +10,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 message(STATUS CMAKE_BUILD_TYPE)
 message(STATUS "Build Type: " ${CMAKE_BUILD_TYPE})
 
-
 set(CSYNC_CXX_FLAGS_DEBUG
   "-g -O0 -Wall -Wextra -Wpedantic -Werror"
 )
 
 set(CSYNC_CXX_FLAGS_RELEASE
-  "-O3 -DNDEBUG -ffunction-sections -fdata-section"
+  "-O3 -DNDEBUG -ffunction-sections -fdata-sections"
 )
 
 set(CMAKE_CXX_FLAGS_DEBUG
@@ -24,7 +23,7 @@ set(CMAKE_CXX_FLAGS_DEBUG
 )
 
 set(CMAKE_CXX_FLAGS_RELEASE
-  -O3
+  ${CSYNC_CXX_FLAGS_RELEASE}
 )
 
 add_executable(csync
