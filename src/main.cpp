@@ -51,7 +51,7 @@ void usage()
             << "\t-h, --help:\tshow this message\n"
             << "\t-v, --version:\tshow csync version\n\n"
             << "Arguments:\n"
-            << "\tinput:\t\tpath to a input CD-ROM file.\n"
+            << "\tinput:\t\tpath to a input CD-ROM file\n"
             << "\toutput:\t\tpath to a output filesystem" << std::endl;
   exit(0);
 }
@@ -149,7 +149,7 @@ bool is_mounted(const std::string &target)
 int unmount_fs(const std::string &target)
 {
   std::string umount = "sudo umount " + target;
-  std::cout << "info: unmounting device: '\x1b[4m" << target << "\x1b[0m'... ";
+  std::cout << "info: unmounting device: '\x1b[4m" << target << "\x1b[0m'...";
   pipe_ptr pipe_umount = exec_cmd(umount);
 
   if (pipe_umount == nullptr)
@@ -237,7 +237,7 @@ int main(int argc, char *argv[])
   if (in != nullptr && out != nullptr)
   {
     std::cout << "info: source filesystem set to: '\x1b[4m" << in << "\x1b[0m'.\n";
-    std::cout << "info: destination filesystem set to: '\x1b[4m" << out << "\x1b[0m. \n";
+    std::cout << "info: destination filesystem set to: '\x1b[4m" << out << "\x1b[0m.\n";
     std::cout << std::endl;
     dump_disk(in, out);
   }
