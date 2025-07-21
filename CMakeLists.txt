@@ -26,6 +26,8 @@ set(CMAKE_CXX_FLAGS_RELEASE
   ${CSYNC_CXX_FLAGS_RELEASE}
 )
 
+add_subdirectory(tests)
+
 add_executable(csync
   src/main.cpp
 )
