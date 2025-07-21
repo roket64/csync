@@ -1,13 +1,9 @@
-#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <memory>
-#include <stdexcept>
 #include <vector>
 
-#include <fcntl.h>
 #include <getopt.h>
-#include <unistd.h>
 
 #define CSYNC_VER_MAJOR 0
 #define CSYNC_VER_MINOR 1
