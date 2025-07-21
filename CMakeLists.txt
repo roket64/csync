@@ -31,3 +31,6 @@ add_subdirectory(tests)
 add_executable(csync
   src/main.cpp
 )
+
+include(GNUInstallDirs)
+install(TARGETS csync RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
