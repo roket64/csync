@@ -155,7 +155,7 @@ int unmount_fs(const std::string &target)
   if (pipe_umount == nullptr)
   {
     std::cerr << "error: failed to unmount the device: '\x1b[4m" << target << "\x1b[0m." << std::endl;
-    std::cerr << "error: command `umount` failed during the execution" << std::endl;
+    std::cerr << "error: command `umount` failed during the execution." << std::endl;
     return 1;
   }
 
@@ -225,6 +225,11 @@ int dump_disk(const std::string &src, const std::string &dst)
 
   pipe_ptr pipe = exec_cmd(cmd.c_str());
   assert(pipe != nullptr);
+  if (pipe == nullptr)
+  {
+    std::cerr << "error: command `dd` failed during the execution." << std::endl;
+    return 1;
+  }
   std::string cmd_output = read_pipe(pipe.get(), 1);
 
   return 0;
