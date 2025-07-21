@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
     std::cout << "info: source filesystem set to: '\x1b[4m" << in << "\x1b[0m'.\n";
     std::cout << "info: destination filesystem set to: '\x1b[4m" << out << "\x1b[0m.\n";
     std::cout << std::endl;
-    dump_disk(in, out);
+    exit(dump_disk(in, out));
   }
 
   std::cerr << "error: source or destination is not set; exiting..." << std::endl;
