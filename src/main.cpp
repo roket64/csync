@@ -10,7 +10,7 @@
 #define CSYNC_VER_PATCH 0
 
 using FILEDeleter = int (*)(FILE *);
-using pipe_ptr = std::unique_ptr<FILE, FILEDeleter>;
+using fileptr = std::unique_ptr<FILE, FILEDeleter>;
 
 char *in = nullptr, *out = nullptr;
 
@@ -94,9 +94,9 @@ int get_opt(int argc, char *argv[])
 /// @brief Executes the given command
 /// @param cmd Command to execute
 /// @return `pipe` connected to the running command.
-pipe_ptr exec_cmd(const std::string &cmd)
+fileptr exec_cmd(const std::string &cmd)
 {
-  pipe_ptr pipe(popen(cmd.c_str(), "r"), pclose);
+  fileptr pipe(popen(cmd.c_str(), "r"), pclose);
   return pipe;
 }
 
@@ -129,7 +129,7 @@ bool is_mounted(const std::string &target)
 {
   const std::string cmd = "findmnt -n -o TARGET --source " + target + " 2>/dev/null";
 
-  pipe_ptr pipe = exec_cmd(cmd);
+  fileptr pipe = exec_cmd(cmd);
 
   if (pipe == nullptr)
     return false;
@@ -146,7 +146,7 @@ int unmount_fs(const std::string &target)
 {
   std::string umount = "sudo umount " + target;
   std::cout << "info: unmounting device: '\x1b[4m" << target << "\x1b[0m'...";
-  pipe_ptr pipe_umount = exec_cmd(umount);
+  fileptr pipe_umount = exec_cmd(umount);
 
   if (pipe_umount == nullptr)
   {
@@ -165,7 +165,7 @@ std::string get_metadata(const std::string &target)
 {
   std::cout << "info: extracting target '\x1b[4m" << target << "\x1b[0m' metadata..." << std::endl;
   const std::string cmd = "file " + target;
-  pipe_ptr pipe = exec_cmd(cmd);
+  fileptr pipe = exec_cmd(cmd);
 
   std::string piped = read_pipe(pipe.get(), 0);
   return piped;
@@ -219,7 +219,7 @@ int dump_disk(const std::string &src, const std::string &dst)
 
   std::string cmd = opt.cmd();
 
-  pipe_ptr pipe = exec_cmd(cmd.c_str());
+  fileptr pipe = exec_cmd(cmd.c_str());
   assert(pipe != nullptr);
   if (pipe == nullptr)
   {
