@@ -19,7 +19,7 @@ char *in = nullptr, *out = nullptr;
 
 void version() {
   std::cout << "csync version " << CSYNC_VER_MAJOR << "." << CSYNC_VER_MINOR
-            << std::endl;
+            << "." << CSYNC_VER_PATCH << std::endl;
   exit(0);
 }
 
@@ -169,13 +169,13 @@ bool is_mounted(const std::string &target) {
       "findmnt", "-n", "-o", "TARGET", "--source", target,
   };
 
-  std::string piped;
+  std::string _piped;
   // ignoreing exit_status
-  exec_cmd_secure(findmnt_args, piped, 0);
+  exec_cmd_secure(findmnt_args, _piped, 0);
 
-  piped.erase(piped.find_last_not_of(" \n\r\t") + 1);
+  _piped.erase(_piped.find_last_not_of(" \n\r\t") + 1);
 
-  return !piped.empty();
+  return !_piped.empty();
 }
 
 /// @brief Retrieves file metadata using the 'file' command.
@@ -270,17 +270,14 @@ int dump_disk(const std::string &src, const std::string &dst) {
       "bs=4M", "oflag=direct", "conv=fsync", "status=progress",
   };
 
-  std::string piped;
-  int exit_code = exec_cmd_secure(dd_args, piped, 1);
+  std::string _piped;
+  int exit_code = exec_cmd_secure(dd_args, _piped, 1);
 
   return exit_code;
 }
 
 int main(int argc, char *argv[]) {
   get_opt(argc, argv);
-
-  if (in != nullptr && out != nullptr) {
-  }
 
   if (in == nullptr || out == nullptr) {
     std::cerr << "error: source or destination is not set; exiting..."
@@ -290,8 +287,7 @@ int main(int argc, char *argv[]) {
 
   std::cout << "info: source filesystem set: '\x1b[4m" << in << "\x1b[0m'.\n";
   std::cout << "info: destination filesystem set: '\x1b[4m" << out
-            << "\x1b[0m'.";
-  std::cout << std::endl;
+            << "\x1b[0m'." << std::endl;
 
   int exit_status = dump_disk(in, out);
 
