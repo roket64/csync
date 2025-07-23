@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <getopt.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -5,13 +6,16 @@
 #include <unistd.h>
 
 #include <cassert>
+#include <cerrno>
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <vector>
 
 #define CSYNC_VER_MAJOR 0
 #define CSYNC_VER_MINOR 1
-#define CSYNC_VER_PATCH 0
+#define CSYNC_VER_PATCH 1
 
 using FILEDeleter = int (*)(FILE *);
 using fileptr = std::unique_ptr<FILE, FILEDeleter>;
@@ -69,35 +73,6 @@ int get_opt(int argc, char *argv[]) {
   }
 
   return 0;
-}
-
-/// @brief Executes a command.
-/// @param cmd The command to execute.
-/// @return A file pointer to the command's output pipe.
-[[deprecated("replaced by `exec_cmd_secure()`")]]
-fileptr exec_cmd(const std::string &cmd) {
-  fileptr pipe(popen(cmd.c_str(), "r"), pclose);
-  return pipe;
-}
-
-/// @brief Reads all output from a given pipe.
-/// @param pipe A file pointer to the command's output pipe.
-/// @param flush If true, flushes the output to the terminal.
-/// @return The entire output from the command as a string.
-[[deprecated("replaced by `exec_cmd_secure()`")]]
-std::string read_pipe(FILE *pipe, bool flush) {
-  std::string res;
-
-  std::vector<char> buffer(128);
-
-  while (fgets(buffer.data(), 128, pipe) != nullptr) {
-    if (flush) {
-      std::cout << buffer.data() << std::endl;
-    }
-    res += buffer.data();
-  }
-
-  return res;
 }
 
 /// @brief Executes a command using `execvp()`
@@ -167,7 +142,7 @@ int exec_cmd_secure(const std::vector<std::string> &args, std::string &buffer,
 /// @return True if the device is mounted, false otherwise.
 bool is_mounted(const std::string &target) {
   std::vector<std::string> findmnt_args = {
-      "findmnt", "-n", "-o", "TARGET", "--source", target,
+      "findmnt", "-n", "-o", "TARGET", "--", target,
   };
 
   std::string _piped;
@@ -188,6 +163,7 @@ std::string get_metadata(const std::string &target) {
 
   std::vector<std::string> file_args = {
       "file",
+      "--",
       target,
   };
 
@@ -237,38 +213,45 @@ bool confirm_dump(const std::string &target) {
   return (c == 'y' || c == 'Y');
 }
 
-/// @brief Writes an image to a disk using the 'dd' command.
+/// @brief Writes an image to a disk using file streams.
 /// @param src The path to the source CD-ROM image file.
 /// @param dst The path to the destination block device.
 /// @return 0 on success, 1 on failure.
 int dump_disk(const std::string &src, const std::string &dst) {
-  struct stat src_stat, dst_stat;
-  if (stat(src.c_str(), &src_stat) != 0) {
+  int src_fd = open(src.c_str(), O_RDONLY);
+  if (src_fd == -1) {
+    std::cerr << "error: could not open source file '\x1b[4m" << src
+              << "\x1b[0m': " << strerror(errno) << std::endl;
+    return 1;
+  }
+
+  struct stat src_stat;
+  if (fstat(src_fd, &src_stat) != 0) {
     std::cerr << "error: could not stat source file '\x1b[4m" << src
-              << "\x1b[0m'." << std::endl;
+              << "\x1b[0m': " << strerror(errno) << std::endl;
+    close(src_fd);
     return 1;
   }
 
   if (!S_ISREG(src_stat.st_mode)) {
     std::cerr << "error: source '\x1b[4m" << src
               << "\x1b[0m' is not a regular file." << std::endl;
+    close(src_fd);
     return 1;
-  }
-
-  if (stat(dst.c_str(), &dst_stat) == 0) {
-    if (src_stat.st_dev == dst_stat.st_dev &&
-        src_stat.st_ino == dst_stat.st_ino) {
-      std::cerr << "error: source and destination files are the same."
-                << std::endl;
-      return 1;
-    }
   }
 
   if (!is_cd_rom(src)) {
     std::cerr << "error: source filesystem '\x1b[4m" << src
               << "\x1b[0m' does not have ISO 9660 CD-ROM signature."
               << std::endl;
+    close(src_fd);
     return 1;
+  }
+
+  if (!confirm_dump(dst)) {
+    std::cout << "info: canceled by user." << std::endl;
+    close(src_fd);
+    exit(0);
   }
 
   if (is_mounted(dst)) {
@@ -277,26 +260,98 @@ int dump_disk(const std::string &src, const std::string &dst) {
     std::cerr
         << "hint: it is required to unmount them first for data integrity."
         << std::endl;
+    close(src_fd);
     return 1;
   }
 
-  if (!confirm_dump(dst)) {
-    std::cout << "info: canceled by user." << std::endl;
-    exit(0);
+  int dst_fd = open(dst.c_str(), O_WRONLY | O_NOFOLLOW);
+  if (dst_fd == -1) {
+    if (errno == ELOOP) {
+      std::cerr << "error: destination '\x1b[4m" << dst
+                << "\x1b[0m' is a symbolic link. Aborting for safety."
+                << std::endl;
+    } else {
+      std::cerr << "error: failed to open destination device '\x1b[4m" << dst
+                << "\x1b[0m': " << strerror(errno) << ". (Hint: run with sudo?)"
+                << std::endl;
+    }
+    close(src_fd);
+    return 1;
+  }
+
+  struct stat dst_stat;
+  if (fstat(dst_fd, &dst_stat) != 0) {
+    std::cerr << "error: could not stat destination path '\x1b[4m" << dst
+              << "\x1b[0m': " << strerror(errno) << std::endl;
+    close(src_fd);
+    close(dst_fd);
+    return 1;
+  }
+
+  if (!S_ISBLK(dst_stat.st_mode)) {
+    std::cerr << "error: destination '\x1b[4m" << dst
+              << "\x1b[0m' is not a block device." << std::endl;
+    close(src_fd);
+    close(dst_fd);
+    return 1;
+  }
+
+  if (src_stat.st_dev == dst_stat.st_dev &&
+      src_stat.st_ino == dst_stat.st_ino) {
+    std::cerr << "error: source and destination files are the same."
+              << std::endl;
+    close(src_fd);
+    close(dst_fd);
+    return 1;
   }
 
   std::cout << "info: initiating dumping..." << std::endl;
 
-  // reference: https://wiki.archlinux.org/title/USB_flash_installation_medium
-  std::vector<std::string> dd_args = {
-      "sudo",  "dd",           "if=" + src,  "of=" + dst,
-      "bs=4M", "oflag=direct", "conv=fsync", "status=progress",
-  };
+  constexpr std::streamsize BUFFER_SIZE = 4 * 1024 * 1024;  // 4MB buffer
+  std::vector<char> buffer(BUFFER_SIZE);
+  long long bytes_written = 0;
+  off_t src_file_size = src_stat.st_size;
+  ssize_t bytes_read = 0;
 
-  std::string _piped;
-  int exit_code = exec_cmd_secure(dd_args, _piped, 1);
+  while ((bytes_read = read(src_fd, buffer.data(), BUFFER_SIZE)) > 0) {
+    ssize_t bytes_written = write(dst_fd, buffer.data(), bytes_read);
 
-  return exit_code;
+    if (bytes_written != bytes_read) {
+      std::cerr << "\nerror: failed to write to destination device '\x1b[4m"
+                << dst << "\x1b[0m'." << std::endl;
+      if (bytes_written == -1) {
+        std::cerr << "I/O error: " << strerror(errno) << std::endl;
+      }
+
+      close(src_fd);
+      close(dst_fd);
+      return 1;
+    }
+
+    bytes_written += bytes_written;
+    float progress =
+        static_cast<float>(bytes_written) / src_file_size * 100;
+
+    std::cout << "\rinfo: progress: " << static_cast<int>(progress) << "% ("
+              << bytes_written << "/" << src_file_size << " bytes)"
+              << std::flush;
+  }
+  std::cout << std::endl;
+
+  sync();
+
+  if (bytes_read == -1) {
+    std::cerr << "error: a read error occurred on source file '\x1b[4m" << src
+              << "\x1b[0m': " << strerror(errno) << std::endl;
+    close(src_fd);
+    close(dst_fd);
+    return 1;
+  }
+
+  close(src_fd);
+  close(dst_fd);
+
+  return 0;
 }
 
 int main(int argc, char *argv[]) {
