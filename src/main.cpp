@@ -1,7 +1,7 @@
 #include <fcntl.h>
 #include <getopt.h>
-#include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -218,26 +218,26 @@ bool confirm_dump(const std::string &target) {
 /// @param dst The path to the destination block device.
 /// @return 0 on success, 1 on failure.
 int dump_disk(const std::string &src, const std::string &dst) {
-  int src_fd = open(src.c_str(), O_RDONLY);
-  if (src_fd == -1) {
-    std::cerr << "error: could not open source file '\x1b[4m" << src
-              << "\x1b[0m': " << strerror(errno) << std::endl;
-    return 1;
-  }
-
-  struct stat src_stat;
-  if (fstat(src_fd, &src_stat) != 0) {
+  struct stat src_stat, dst_stat;
+  if (stat(src.c_str(), &src_stat) != 0) {
     std::cerr << "error: could not stat source file '\x1b[4m" << src
-              << "\x1b[0m': " << strerror(errno) << std::endl;
-    close(src_fd);
+              << "\x1b[0m'." << std::endl;
     return 1;
   }
 
   if (!S_ISREG(src_stat.st_mode)) {
     std::cerr << "error: source '\x1b[4m" << src
               << "\x1b[0m' is not a regular file." << std::endl;
-    close(src_fd);
     return 1;
+  }
+
+  if (stat(dst.c_str(), &dst_stat) == 0) {
+    if (src_stat.st_dev == dst_stat.st_dev &&
+        src_stat.st_ino == dst_stat.st_ino) {
+      std::cerr << "error: source and destination files are the same."
+                << std::endl;
+      return 1;
+    }
   }
 
   if (!is_cd_rom(src)) {
@@ -296,62 +296,23 @@ int dump_disk(const std::string &src, const std::string &dst) {
     return 1;
   }
 
-  if (src_stat.st_dev == dst_stat.st_dev &&
-      src_stat.st_ino == dst_stat.st_ino) {
-    std::cerr << "error: source and destination files are the same."
-              << std::endl;
-    close(src_fd);
-    close(dst_fd);
-    return 1;
+  if (!confirm_dump(dst)) {
+    std::cout << "info: canceled by user." << std::endl;
+    exit(0);
   }
 
   std::cout << "info: initiating dumping..." << std::endl;
 
-  constexpr std::streamsize BUFFER_SIZE = 4 * 1024 * 1024;  // 4MB buffer
-  std::vector<char> buffer(BUFFER_SIZE);
-  long long bytes_written = 0;
-  off_t src_file_size = src_stat.st_size;
-  ssize_t bytes_read = 0;
+  // reference: https://wiki.archlinux.org/title/USB_flash_installation_medium
+  std::vector<std::string> dd_args = {
+      "sudo",  "dd",           "if=" + src,  "of=" + dst,
+      "bs=4M", "oflag=direct", "conv=fsync", "status=progress",
+  };
 
-  while ((bytes_read = read(src_fd, buffer.data(), BUFFER_SIZE)) > 0) {
-    ssize_t bytes_written = write(dst_fd, buffer.data(), bytes_read);
+  std::string _piped;
+  int exit_code = exec_cmd_secure(dd_args, _piped, 1);
 
-    if (bytes_written != bytes_read) {
-      std::cerr << "\nerror: failed to write to destination device '\x1b[4m"
-                << dst << "\x1b[0m'." << std::endl;
-      if (bytes_written == -1) {
-        std::cerr << "I/O error: " << strerror(errno) << std::endl;
-      }
-
-      close(src_fd);
-      close(dst_fd);
-      return 1;
-    }
-
-    bytes_written += bytes_written;
-    float progress =
-        static_cast<float>(bytes_written) / src_file_size * 100;
-
-    std::cout << "\rinfo: progress: " << static_cast<int>(progress) << "% ("
-              << bytes_written << "/" << src_file_size << " bytes)"
-              << std::flush;
-  }
-  std::cout << std::endl;
-
-  sync();
-
-  if (bytes_read == -1) {
-    std::cerr << "error: a read error occurred on source file '\x1b[4m" << src
-              << "\x1b[0m': " << strerror(errno) << std::endl;
-    close(src_fd);
-    close(dst_fd);
-    return 1;
-  }
-
-  close(src_fd);
-  close(dst_fd);
-
-  return 0;
+  return exit_code;
 }
 
 int main(int argc, char *argv[]) {
