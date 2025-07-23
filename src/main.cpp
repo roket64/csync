@@ -34,10 +34,10 @@ void usage() {
   exit(0);
 }
 
-/// @brief Parses the supplied arguments to the program.
-/// @param argc Number of the arguments.
-/// @param argv Supplied arguments in `char*`
-/// @return `0` if parsing was successful or `1`.
+/// @brief Parses command-line arguments.
+/// @param argc The number of supplied arguments.
+/// @param argv An array of supplied arguments.
+/// @return Returns 0 on success.
 int get_opt(int argc, char *argv[]) {
   int opt;
   int index = 0;
@@ -70,19 +70,19 @@ int get_opt(int argc, char *argv[]) {
   return 0;
 }
 
-/// @brief Executes the given command
-/// @param cmd Command to execute
-/// @return `pipe` connected to the running command.
+/// @brief Executes a command.
+/// @param cmd The command to execute.
+/// @return A file pointer to the command's output pipe.
 [[deprecated("replaced by `exec_cmd_secure()`")]]
 fileptr exec_cmd(const std::string &cmd) {
   fileptr pipe(popen(cmd.c_str(), "r"), pclose);
   return pipe;
 }
 
-/// @brief Reads all outputs from the given `pipe`.
-/// @param pipe `pipe` connected to the running command.
-/// @param flush if `true`, `pipe` will flush its outputs on the terminal.
-/// @return whole output of the command.
+/// @brief Reads all output from a given pipe.
+/// @param pipe A file pointer to the command's output pipe.
+/// @param flush If true, flushes the output to the terminal.
+/// @return The entire output from the command as a string.
 [[deprecated("replaced by `exec_cmd_secure()`")]]
 std::string read_pipe(FILE *pipe, bool flush) {
   std::string res;
@@ -99,11 +99,11 @@ std::string read_pipe(FILE *pipe, bool flush) {
   return res;
 }
 
-/// @brief Securely executes the given command.
-/// @param args Arguments that will be passed to the process.
-/// @param buffer Buffer for contain outputs of the process.
-/// @param flush if `true`, buffer will flush its outputs on the terminal.
-/// @return `0` if execution was successful or `1`.
+/// @brief Executes a command using `execvp()`
+/// @param args A vector of strings representing the command and its arguments.
+/// @param buffer A string reference to store the command's output.
+/// @param flush If true, streams the command's output to the terminal.
+/// @return The exit code of the command, or -1 on error.
 int exec_cmd_secure(const std::vector<std::string> &args, std::string &buffer,
                     bool flush) {
   if (args.empty()) {
@@ -161,9 +161,9 @@ int exec_cmd_secure(const std::vector<std::string> &args, std::string &buffer,
   return exit_code;
 }
 
-/// @brief Checks whether the target device is mounted on system.
-/// @param target Absolute path to the device.
-/// @return `1` if mounted or `0`
+/// @brief Checks if a device is mounted.
+/// @param target The path to the device to check.
+/// @return True if the device is mounted, false otherwise.
 bool is_mounted(const std::string &target) {
   std::vector<std::string> findmnt_args = {
       "findmnt", "-n", "-o", "TARGET", "--source", target,
@@ -178,9 +178,9 @@ bool is_mounted(const std::string &target) {
   return !piped.empty();
 }
 
-/// @brief  Executes `file` command with given file.
-/// @param target Path to the file.
-/// @return Metadata of the target in `std::string`.
+/// @brief Retrieves file metadata using the 'file' command.
+/// @param target The path to the file.
+/// @return A string containing the file's metadata.
 std::string get_metadata(const std::string &target) {
   std::cout << "info: extracting target '\x1b[4m" << target
             << "\x1b[0m' metadata..." << std::endl;
@@ -197,9 +197,9 @@ std::string get_metadata(const std::string &target) {
   return piped;
 }
 
-/// @brief Checks if given target has `ISO 9660 CD-ROM` metadata.
-/// @param target Path to the target
-/// @return `true` if the target has it or `false`.
+/// @brief Checks if a file is a bootable ISO 9660 CD-ROM image.
+/// @param target The path to the file to check.
+/// @return True if the file is a bootable CD-ROM image, false otherwise.
 bool is_cd_rom(const std::string &target) noexcept {
   std::cout << "info: checking file metadata..." << std::endl;
   std::string metadata = get_metadata(target);
@@ -212,9 +212,9 @@ bool is_cd_rom(const std::string &target) noexcept {
           metadata.find(BOOTABLE_IDENT) != NPOS);
 }
 
-/// @brief Asks user for confirmation.
-/// @param target Path to the target filesystem.
-/// @return `true` if user confirms or `false`.
+/// @brief Prompts the user for confirmation before proceeding.
+/// @param target The path to the destination filesystem .
+/// @return True if the user confirms, false otherwise.
 bool confirm_dump(const std::string &target) {
   std::cout << "\x1b[31mWARNING\x1b[0m: "
             << "destination disk '\x1b[4m" << target
@@ -236,10 +236,10 @@ bool confirm_dump(const std::string &target) {
   return (c == 'y' || c == 'Y');
 }
 
-/// @brief Dumps disk using `dd` command.
-/// @param src Path to input `CD-ROM` file.
-/// @param dst Path to output filesystem.
-/// @return `0` if Dumping was successful or `1`.
+/// @brief Writes an image to a disk using the 'dd' command.
+/// @param src The path to the source CD-ROM image file.
+/// @param dst The path to the destination block device.
+/// @return 0 on success, 1 on failure.
 int dump_disk(const std::string &src, const std::string &dst) {
   if (!is_cd_rom(src)) {
     std::cerr << "error: source filesystem '\x1b[4m" << src
@@ -280,22 +280,26 @@ int main(int argc, char *argv[]) {
   get_opt(argc, argv);
 
   if (in != nullptr && out != nullptr) {
-    std::cout << "info: source filesystem set: '\x1b[4m" << in << "\x1b[0m'.\n";
-    std::cout << "info: destination filesystem set: '\x1b[4m" << out
-              << "\x1b[0m'.";
-    std::cout << std::endl;
-
-    int exit_status = dump_disk(in, out);
-
-    if (exit_status == 0) {
-      std::cout << "info: Done." << std::endl;
-    } else {
-      std::cout << "error: failed to dump disk to destination." << std::endl;
-    }
-    exit(exit_status);
   }
 
-  std::cerr << "error: source or destination is not set; exiting..."
-            << std::endl;
-  return 1;
+  if (in == nullptr || out == nullptr) {
+    std::cerr << "error: source or destination is not set; exiting..."
+              << std::endl;
+    return 1;
+  }
+
+  std::cout << "info: source filesystem set: '\x1b[4m" << in << "\x1b[0m'.\n";
+  std::cout << "info: destination filesystem set: '\x1b[4m" << out
+            << "\x1b[0m'.";
+  std::cout << std::endl;
+
+  int exit_status = dump_disk(in, out);
+
+  if (exit_status == 0) {
+    std::cout << "info: Done." << std::endl;
+  } else {
+    std::cout << "error: failed to dump disk to destination." << std::endl;
+  }
+
+  return exit_status;
 }
