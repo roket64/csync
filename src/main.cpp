@@ -1,4 +1,5 @@
 #include <getopt.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -241,6 +242,28 @@ bool confirm_dump(const std::string &target) {
 /// @param dst The path to the destination block device.
 /// @return 0 on success, 1 on failure.
 int dump_disk(const std::string &src, const std::string &dst) {
+  struct stat src_stat, dst_stat;
+  if (stat(src.c_str(), &src_stat) != 0) {
+    std::cerr << "error: could not stat source file '\x1b[4m" << src
+              << "\x1b[0m'." << std::endl;
+    return 1;
+  }
+
+  if (!S_ISREG(src_stat.st_mode)) {
+    std::cerr << "error: source '\x1b[4m" << src
+              << "\x1b[0m' is not a regular file." << std::endl;
+    return 1;
+  }
+
+  if (stat(dst.c_str(), &dst_stat) == 0) {
+    if (src_stat.st_dev == dst_stat.st_dev &&
+        src_stat.st_ino == dst_stat.st_ino) {
+      std::cerr << "error: source and destination files are the same."
+                << std::endl;
+      return 1;
+    }
+  }
+
   if (!is_cd_rom(src)) {
     std::cerr << "error: source filesystem '\x1b[4m" << src
               << "\x1b[0m' does not have ISO 9660 CD-ROM signature."
