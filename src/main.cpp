@@ -1,14 +1,8 @@
-#include <fcntl.h>
 #include <getopt.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
 #include <termios.h>
-#include <unistd.h>
 
 #include <cassert>
-#include <cerrno>
-#include <cstring>
-#include <fstream>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -16,9 +10,6 @@
 #define CSYNC_VER_MAJOR 0
 #define CSYNC_VER_MINOR 1
 #define CSYNC_VER_PATCH 1
-
-using FILEDeleter = int (*)(FILE *);
-using fileptr = std::unique_ptr<FILE, FILEDeleter>;
 
 char *in = nullptr, *out = nullptr;
 
@@ -177,7 +168,7 @@ std::string get_metadata(const std::string &target) {
 /// @brief Checks if a file is a bootable ISO 9660 CD-ROM image.
 /// @param target The path to the file to check.
 /// @return True if the file is a bootable CD-ROM image, false otherwise.
-bool is_cd_rom(const std::string &target) noexcept {
+bool has_iso_sig(const std::string &target) noexcept {
   std::cout << "info: checking file metadata..." << std::endl;
   std::string metadata = get_metadata(target);
 
@@ -218,40 +209,11 @@ bool confirm_dump(const std::string &target) {
 /// @param dst The path to the destination block device.
 /// @return 0 on success, 1 on failure.
 int dump_disk(const std::string &src, const std::string &dst) {
-  struct stat src_stat, dst_stat;
-  if (stat(src.c_str(), &src_stat) != 0) {
-    std::cerr << "error: could not stat source file '\x1b[4m" << src
-              << "\x1b[0m'." << std::endl;
-    return 1;
-  }
-
-  if (!S_ISREG(src_stat.st_mode)) {
-    std::cerr << "error: source '\x1b[4m" << src
-              << "\x1b[0m' is not a regular file." << std::endl;
-    return 1;
-  }
-
-  if (stat(dst.c_str(), &dst_stat) == 0) {
-    if (src_stat.st_dev == dst_stat.st_dev &&
-        src_stat.st_ino == dst_stat.st_ino) {
-      std::cerr << "error: source and destination files are the same."
-                << std::endl;
-      return 1;
-    }
-  }
-
-  if (!is_cd_rom(src)) {
+  if (!has_iso_sig(src)) {
     std::cerr << "error: source filesystem '\x1b[4m" << src
               << "\x1b[0m' does not have ISO 9660 CD-ROM signature."
               << std::endl;
-    close(src_fd);
     return 1;
-  }
-
-  if (!confirm_dump(dst)) {
-    std::cout << "info: canceled by user." << std::endl;
-    close(src_fd);
-    exit(0);
   }
 
   if (is_mounted(dst)) {
@@ -260,39 +222,6 @@ int dump_disk(const std::string &src, const std::string &dst) {
     std::cerr
         << "hint: it is required to unmount them first for data integrity."
         << std::endl;
-    close(src_fd);
-    return 1;
-  }
-
-  int dst_fd = open(dst.c_str(), O_WRONLY | O_NOFOLLOW);
-  if (dst_fd == -1) {
-    if (errno == ELOOP) {
-      std::cerr << "error: destination '\x1b[4m" << dst
-                << "\x1b[0m' is a symbolic link. Aborting for safety."
-                << std::endl;
-    } else {
-      std::cerr << "error: failed to open destination device '\x1b[4m" << dst
-                << "\x1b[0m': " << strerror(errno) << ". (Hint: run with sudo?)"
-                << std::endl;
-    }
-    close(src_fd);
-    return 1;
-  }
-
-  struct stat dst_stat;
-  if (fstat(dst_fd, &dst_stat) != 0) {
-    std::cerr << "error: could not stat destination path '\x1b[4m" << dst
-              << "\x1b[0m': " << strerror(errno) << std::endl;
-    close(src_fd);
-    close(dst_fd);
-    return 1;
-  }
-
-  if (!S_ISBLK(dst_stat.st_mode)) {
-    std::cerr << "error: destination '\x1b[4m" << dst
-              << "\x1b[0m' is not a block device." << std::endl;
-    close(src_fd);
-    close(dst_fd);
     return 1;
   }
 
@@ -305,7 +234,7 @@ int dump_disk(const std::string &src, const std::string &dst) {
 
   // reference: https://wiki.archlinux.org/title/USB_flash_installation_medium
   std::vector<std::string> dd_args = {
-      "sudo",  "dd",           "if=" + src,  "of=" + dst,
+      "sudo",  "dd",           "--",         "if=" + src,       "of=" + dst,
       "bs=4M", "oflag=direct", "conv=fsync", "status=progress",
   };
 
